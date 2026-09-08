@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ebv-shell-v2';
+const CACHE_NAME = 'ebv-shell-v3';
 const SHELL_FILES = [
   './',
   'index.html',
@@ -6,7 +6,6 @@ const SHELL_FILES = [
   'app.js',
   'config.js',
   'manifest.json',
-  'silent-renew.html',
   'icon-192.png',
   'icon-512.png',
 ];
