@@ -1,6 +1,12 @@
 let tokenClient;
 let accessToken = null;
 let isOwner = false;
+let signedIn = false;
+let tokenRefreshTimer = null;
+let isSilentAttempt = false;
+let pendingSilentResolve = null;
+
+const SIGNED_IN_FLAG = 'ebv-was-signed-in';
 
 const signinBtn = document.getElementById('signin-btn');
 const userStatus = document.getElementById('user-status');
@@ -67,21 +73,81 @@ async function initAuth() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
     scope: CONFIG.OAUTH_SCOPES,
-    callback: async (response) => {
-      if (response.error) {
-        showError('로그인에 실패했습니다: ' + response.error);
-        return;
-      }
-      accessToken = response.access_token;
-      clearError();
-      signinBtn.hidden = true;
-      await afterSignIn();
-    },
+    callback: handleTokenResponse,
   });
 
   signinBtn.addEventListener('click', () => {
-    tokenClient.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
+    isSilentAttempt = false;
+    tokenClient.requestAccessToken({ prompt: 'consent' });
   });
+
+  // 이 브라우저에서 이전에 로그인한 적이 있다면, 구글 세션이 아직 살아있는지
+  // 화면에 아무것도 띄우지 않고 조용히 확인합니다. 성공하면 로그인 버튼을
+  // 누르지 않아도 바로 로그인된 화면으로 넘어갑니다.
+  if (localStorage.getItem(SIGNED_IN_FLAG) === '1') {
+    isSilentAttempt = true;
+    tokenClient.requestAccessToken({ prompt: '' });
+  }
+}
+
+// Google이 발급한 액세스 토큰은 완전한 백엔드 없이는 refresh token을 받을 수
+// 없어 보통 1시간 정도만 유효합니다. 만료되기 전에 조용히(팝업 없이) 새
+// 토큰을 미리 받아둬서, 실제로 "로그인이 끊기는" 상황을 최대한 줄입니다.
+function scheduleTokenRefresh(expiresInSeconds) {
+  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
+  const refreshInMs = Math.max((expiresInSeconds - 300) * 1000, 30000);
+  tokenRefreshTimer = setTimeout(() => {
+    isSilentAttempt = true;
+    tokenClient.requestAccessToken({ prompt: '' });
+  }, refreshInMs);
+}
+
+// 요청이 401로 실패했을 때 한 번 더, 조용한 재인증을 시도해볼 때 사용합니다.
+function trySilentReauth() {
+  return new Promise((resolve) => {
+    pendingSilentResolve = resolve;
+    isSilentAttempt = true;
+    tokenClient.requestAccessToken({ prompt: '' });
+  });
+}
+
+async function handleTokenResponse(response) {
+  const wasSilent = isSilentAttempt;
+  isSilentAttempt = false;
+
+  if (response.error) {
+    if (pendingSilentResolve) {
+      pendingSilentResolve(false);
+      pendingSilentResolve = null;
+      return;
+    }
+    if (wasSilent) {
+      // 백그라운드 자동 로그인 실패는 화면에 표시하지 않고 조용히 넘어갑니다
+      // (로그아웃했거나 세션이 끊긴 경우 등). 다음부터는 다시 시도하지 않도록 플래그만 지웁니다.
+      localStorage.removeItem(SIGNED_IN_FLAG);
+      return;
+    }
+    showError('로그인에 실패했습니다: ' + response.error);
+    return;
+  }
+
+  accessToken = response.access_token;
+  localStorage.setItem(SIGNED_IN_FLAG, '1');
+  scheduleTokenRefresh(response.expires_in || 3600);
+
+  if (pendingSilentResolve) {
+    // 401 복구용 재발급이었던 경우: 화면 전환은 이미 되어 있으니 여기서 끝냅니다.
+    pendingSilentResolve(true);
+    pendingSilentResolve = null;
+    return;
+  }
+
+  clearError();
+  signinBtn.hidden = true;
+  if (!signedIn) {
+    signedIn = true;
+    await afterSignIn();
+  }
 }
 
 async function afterSignIn() {
@@ -94,12 +160,19 @@ async function afterSignIn() {
   await loadFileTree();
 }
 
-async function driveFetch(url) {
+async function driveFetch(url, isRetry = false) {
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (res.status === 401) {
+    if (!isRetry) {
+      const refreshed = await trySilentReauth();
+      if (refreshed) return driveFetch(url, true);
+    }
+    if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
     accessToken = null;
+    signedIn = false;
+    localStorage.removeItem(SIGNED_IN_FLAG);
     signinBtn.hidden = false;
     userStatus.hidden = true;
     menuToggle.hidden = true;
@@ -279,3 +352,11 @@ async function openFile(file, buttonEl) {
 }
 
 initAuth();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      // 서비스워커 등록 실패는 앱 동작에 영향 없으므로 조용히 무시합니다.
+    });
+  });
+}
