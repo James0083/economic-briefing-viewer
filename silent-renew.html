@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>silent renew</title></head>
+<body>
+<script>
+  // Google OAuth가 이 페이지로 리다이렉트하면서 URL 프래그먼트(#)에
+  // access_token 또는 error를 담아 보냅니다. 그대로 파싱해서
+  // 부모 창(app.js)에 postMessage로 전달만 하는 용도입니다.
+  (function () {
+    var hash = window.location.hash.substring(1);
+    var params = {};
+    hash.split('&').forEach(function (pair) {
+      var idx = pair.indexOf('=');
+      if (idx === -1) return;
+      params[decodeURIComponent(pair.slice(0, idx))] = decodeURIComponent(pair.slice(idx + 1));
+    });
+    if (window.parent) {
+      window.parent.postMessage({ source: 'ebv-silent-renew', params: params }, window.location.origin);
+    }
+  })();
+</script>
+</body>
+</html>

@@ -3,8 +3,6 @@ let accessToken = null;
 let isOwner = false;
 let signedIn = false;
 let tokenRefreshTimer = null;
-let isSilentAttempt = false;
-let pendingSilentResolve = null;
 
 const SIGNED_IN_FLAG = 'ebv-was-signed-in';
 
@@ -69,85 +67,115 @@ async function initAuth() {
     return;
   }
 
+  // 이 브라우저에서 이전에 로그인한 적이 있다면, 화면에 아무것도 띄우지 않고
+  // 숨겨진 iframe으로 구글 세션이 아직 살아있는지 조용히 확인합니다. 팝업을
+  // 띄우는 방식이 아니라서 브라우저의 팝업 차단에 걸리지 않습니다.
+  if (localStorage.getItem(SIGNED_IN_FLAG) === '1') {
+    trySilentRenew().then((ok) => {
+      if (ok) signInSuccessUI();
+    });
+  }
+
   await waitForGis();
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
     scope: CONFIG.OAUTH_SCOPES,
-    callback: handleTokenResponse,
+    callback: (response) => {
+      if (response.error) {
+        showError('로그인에 실패했습니다: ' + response.error);
+        return;
+      }
+      accessToken = response.access_token;
+      localStorage.setItem(SIGNED_IN_FLAG, '1');
+      scheduleTokenRefresh(response.expires_in || 3600);
+      signInSuccessUI();
+    },
   });
 
+  // 이 버튼 클릭은 사용자 제스처 안에서 일어나므로 팝업이 브라우저에
+  // 차단되지 않습니다. 최초 로그인이나, 완전히 세션이 끊긴 뒤 재로그인할
+  // 때만 이 경로를 탑니다.
   signinBtn.addEventListener('click', () => {
-    isSilentAttempt = false;
     tokenClient.requestAccessToken({ prompt: 'consent' });
   });
-
-  // 이 브라우저에서 이전에 로그인한 적이 있다면, 구글 세션이 아직 살아있는지
-  // 화면에 아무것도 띄우지 않고 조용히 확인합니다. 성공하면 로그인 버튼을
-  // 누르지 않아도 바로 로그인된 화면으로 넘어갑니다.
-  if (localStorage.getItem(SIGNED_IN_FLAG) === '1') {
-    isSilentAttempt = true;
-    tokenClient.requestAccessToken({ prompt: '' });
-  }
 }
 
-// Google이 발급한 액세스 토큰은 완전한 백엔드 없이는 refresh token을 받을 수
-// 없어 보통 1시간 정도만 유효합니다. 만료되기 전에 조용히(팝업 없이) 새
-// 토큰을 미리 받아둬서, 실제로 "로그인이 끊기는" 상황을 최대한 줄입니다.
-function scheduleTokenRefresh(expiresInSeconds) {
-  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
-  const refreshInMs = Math.max((expiresInSeconds - 300) * 1000, 30000);
-  tokenRefreshTimer = setTimeout(() => {
-    isSilentAttempt = true;
-    tokenClient.requestAccessToken({ prompt: '' });
-  }, refreshInMs);
-}
-
-// 요청이 401로 실패했을 때 한 번 더, 조용한 재인증을 시도해볼 때 사용합니다.
-function trySilentReauth() {
-  return new Promise((resolve) => {
-    pendingSilentResolve = resolve;
-    isSilentAttempt = true;
-    tokenClient.requestAccessToken({ prompt: '' });
-  });
-}
-
-async function handleTokenResponse(response) {
-  const wasSilent = isSilentAttempt;
-  isSilentAttempt = false;
-
-  if (response.error) {
-    if (pendingSilentResolve) {
-      pendingSilentResolve(false);
-      pendingSilentResolve = null;
-      return;
-    }
-    if (wasSilent) {
-      // 백그라운드 자동 로그인 실패는 화면에 표시하지 않고 조용히 넘어갑니다
-      // (로그아웃했거나 세션이 끊긴 경우 등). 다음부터는 다시 시도하지 않도록 플래그만 지웁니다.
-      localStorage.removeItem(SIGNED_IN_FLAG);
-      return;
-    }
-    showError('로그인에 실패했습니다: ' + response.error);
-    return;
-  }
-
-  accessToken = response.access_token;
-  localStorage.setItem(SIGNED_IN_FLAG, '1');
-  scheduleTokenRefresh(response.expires_in || 3600);
-
-  if (pendingSilentResolve) {
-    // 401 복구용 재발급이었던 경우: 화면 전환은 이미 되어 있으니 여기서 끝냅니다.
-    pendingSilentResolve(true);
-    pendingSilentResolve = null;
-    return;
-  }
-
+function signInSuccessUI() {
   clearError();
   signinBtn.hidden = true;
   if (!signedIn) {
     signedIn = true;
-    await afterSignIn();
+    afterSignIn();
   }
+}
+
+function buildSilentAuthUrl() {
+  const redirectUri = new URL('silent-renew.html', window.location.href).toString();
+  const params = new URLSearchParams({
+    client_id: CONFIG.CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: CONFIG.OAUTH_SCOPES,
+    prompt: 'none',
+    include_granted_scopes: 'true',
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+// 팝업 없이, 숨겨진 iframe으로 액세스 토큰을 조용히 재발급받습니다.
+// 브라우저에 구글 로그인 세션이 남아있고 이 앱에 대한 동의가 이미
+// 되어있으면 사용자 상호작용 없이 성공합니다. 세션이 끊겼으면 그냥
+// 실패로 끝나고(화면에 아무 표시도 하지 않음) 로그인 버튼이 그대로 보입니다.
+function trySilentRenew(timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+
+    function cleanup() {
+      window.removeEventListener('message', onMessage);
+      clearTimeout(timer);
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    }
+
+    function finish(ok) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ok);
+    }
+
+    function onMessage(event) {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.source !== 'ebv-silent-renew') return;
+      const params = event.data.params || {};
+      if (params.access_token) {
+        accessToken = params.access_token;
+        localStorage.setItem(SIGNED_IN_FLAG, '1');
+        scheduleTokenRefresh(Number(params.expires_in) || 3600);
+        finish(true);
+      } else {
+        localStorage.removeItem(SIGNED_IN_FLAG);
+        finish(false);
+      }
+    }
+
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    window.addEventListener('message', onMessage);
+    iframe.src = buildSilentAuthUrl();
+    document.body.appendChild(iframe);
+  });
+}
+
+// Google이 발급한 액세스 토큰은 완전한 백엔드 없이는 refresh token을 받을 수
+// 없어 보통 1시간 정도만 유효합니다. 만료되기 전에 조용히 새 토큰을 미리
+// 받아둬서, 실제로 "로그인이 끊기는" 상황을 최대한 줄입니다.
+function scheduleTokenRefresh(expiresInSeconds) {
+  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
+  const refreshInMs = Math.max((expiresInSeconds - 300) * 1000, 30000);
+  tokenRefreshTimer = setTimeout(() => {
+    trySilentRenew();
+  }, refreshInMs);
 }
 
 async function afterSignIn() {
@@ -166,7 +194,7 @@ async function driveFetch(url, isRetry = false) {
   });
   if (res.status === 401) {
     if (!isRetry) {
-      const refreshed = await trySilentReauth();
+      const refreshed = await trySilentRenew();
       if (refreshed) return driveFetch(url, true);
     }
     if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
