@@ -1,6 +1,6 @@
 # 경제시황분석 브리핑 뷰어
 
-Google Drive의 "경제시황분석" 폴더에 있는 마크다운 브리핑 파일들을 목록으로 보여주고,
+Google Drive의 "경제시황분석 - Claude" 폴더에 있는 마크다운 브리핑 파일들을 목록으로 보여주고,
 클릭하면 본문을 보기 좋게 렌더링해주는 정적 웹페이지입니다.
 백엔드 서버 없이 GitHub Pages로만 배포됩니다.
 
@@ -36,7 +36,7 @@ Google Drive의 "경제시황분석" 폴더에 있는 마크다운 브리핑 파
 ```js
 const CONFIG = {
   CLIENT_ID: '여기에_발급받은_클라이언트_ID',
-  FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // 경제시황분석 폴더 ID (이미 설정됨)
+  FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // 경제시황분석 - Claude 폴더 ID (이미 설정됨)
   OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
   OWNER_EMAIL: 'jaewon000830@gmail.com', // 이 계정으로 로그인할 때만 하위 폴더가 표시됨
   OWNER_ONLY_FOLDER_IDS: ['1mWvYywhASMUfkY1OuKCxjE1xAjbpqVqf'], // OWNER_EMAIL에게만 추가로 보여줄 폴더
