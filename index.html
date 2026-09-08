@@ -8,15 +8,19 @@
 </head>
 <body>
   <header class="app-header">
-    <h1>📊 경제시황분석 브리핑</h1>
+    <div class="header-left">
+      <button id="menu-toggle" class="menu-toggle" aria-label="목록 열기" hidden>☰</button>
+      <h1>📊 경제시황분석 브리핑</h1>
+    </div>
     <div id="auth-area">
       <button id="signin-btn" class="btn-primary">Google로 로그인</button>
-      <span id="user-status" class="hidden">로그인됨</span>
+      <span id="user-status" class="hidden"></span>
     </div>
   </header>
 
   <main class="layout" id="layout" hidden>
-    <aside class="sidebar">
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+    <aside class="sidebar" id="sidebar">
       <h2>브리핑 목록</h2>
       <div id="file-list" class="file-list">
         <p class="muted">불러오는 중...</p>

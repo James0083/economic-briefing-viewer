@@ -1,6 +1,6 @@
 let tokenClient;
 let accessToken = null;
-let files = [];
+let isOwner = false;
 
 const signinBtn = document.getElementById('signin-btn');
 const userStatus = document.getElementById('user-status');
@@ -9,6 +9,9 @@ const fileListEl = document.getElementById('file-list');
 const placeholder = document.getElementById('content-placeholder');
 const contentView = document.getElementById('content-view');
 const errorBanner = document.getElementById('error-banner');
+const menuToggle = document.getElementById('menu-toggle');
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
 function showError(message) {
   errorBanner.textContent = message;
@@ -18,6 +21,25 @@ function showError(message) {
 function clearError() {
   errorBanner.hidden = true;
 }
+
+function openSidebar() {
+  sidebar.classList.add('open');
+  sidebarBackdrop.classList.add('show');
+}
+
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('show');
+}
+
+menuToggle.addEventListener('click', () => {
+  if (sidebar.classList.contains('open')) {
+    closeSidebar();
+  } else {
+    openSidebar();
+  }
+});
+sidebarBackdrop.addEventListener('click', closeSidebar);
 
 function waitForGis() {
   return new Promise((resolve) => {
@@ -44,7 +66,7 @@ async function initAuth() {
   await waitForGis();
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.CLIENT_ID,
-    scope: CONFIG.DRIVE_SCOPE,
+    scope: CONFIG.OAUTH_SCOPES,
     callback: async (response) => {
       if (response.error) {
         showError('로그인에 실패했습니다: ' + response.error);
@@ -53,15 +75,23 @@ async function initAuth() {
       accessToken = response.access_token;
       clearError();
       signinBtn.hidden = true;
-      userStatus.hidden = false;
-      layout.hidden = false;
-      await loadFileList();
+      await afterSignIn();
     },
   });
 
   signinBtn.addEventListener('click', () => {
     tokenClient.requestAccessToken({ prompt: accessToken ? '' : 'consent' });
   });
+}
+
+async function afterSignIn() {
+  const email = await fetchUserEmail();
+  isOwner = email === CONFIG.OWNER_EMAIL;
+  userStatus.hidden = false;
+  userStatus.textContent = email || '로그인됨';
+  menuToggle.hidden = false;
+  layout.hidden = false;
+  await loadFileTree();
 }
 
 async function driveFetch(url) {
@@ -72,6 +102,7 @@ async function driveFetch(url) {
     accessToken = null;
     signinBtn.hidden = false;
     userStatus.hidden = true;
+    menuToggle.hidden = true;
     layout.hidden = true;
     throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
   }
@@ -81,33 +112,88 @@ async function driveFetch(url) {
   return res;
 }
 
-async function loadFileList() {
+async function fetchUserEmail() {
+  try {
+    const res = await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo');
+    const data = await res.json();
+    return data.email || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+async function fetchFolderChildren(folderId) {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,modifiedTime)&orderBy=folder,name desc&pageSize=200`;
+  const res = await driveFetch(url);
+  const data = await res.json();
+  return data.files || [];
+}
+
+// 소유자 계정으로 로그인한 경우에만 하위 폴더까지 재귀적으로 조회합니다.
+async function loadFolderTree(folderId) {
+  const children = await fetchFolderChildren(folderId);
+  const subfolders = children.filter((f) => f.mimeType === FOLDER_MIME);
+  const mdFiles = children.filter((f) => f.name.toLowerCase().endsWith('.md'));
+
+  let folders = [];
+  if (isOwner && subfolders.length > 0) {
+    folders = await Promise.all(
+      subfolders.map(async (folder) => ({
+        id: folder.id,
+        name: folder.name,
+        ...(await loadFolderTree(folder.id)),
+      }))
+    );
+  }
+
+  return { folders, files: mdFiles };
+}
+
+async function loadFileTree() {
   fileListEl.innerHTML = '<p class="muted">불러오는 중...</p>';
   try {
-    const q = encodeURIComponent(`'${CONFIG.FOLDER_ID}' in parents and trashed = false`);
-    const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=name desc&pageSize=200`;
-    const res = await driveFetch(url);
-    const data = await res.json();
-    files = (data.files || []).filter((f) => f.name.toLowerCase().endsWith('.md'));
-    renderFileList();
+    const tree = await loadFolderTree(CONFIG.FOLDER_ID);
+    fileListEl.innerHTML = '';
+    renderTree(tree, fileListEl, 0);
+    if (fileListEl.children.length === 0) {
+      fileListEl.innerHTML = '<p class="muted">표시할 .md 파일이 없습니다.</p>';
+    }
   } catch (err) {
     showError(err.message);
     fileListEl.innerHTML = '';
   }
 }
 
-function renderFileList() {
-  if (files.length === 0) {
-    fileListEl.innerHTML = '<p class="muted">표시할 .md 파일이 없습니다.</p>';
-    return;
-  }
-  fileListEl.innerHTML = '';
-  files.forEach((file) => {
+function renderTree(node, container, depth) {
+  node.folders.forEach((folder) => {
+    const details = document.createElement('details');
+    details.className = 'folder-item';
+    details.open = depth === 0;
+
+    const summary = document.createElement('summary');
+    summary.textContent = `📁 ${folder.name}`;
+    details.appendChild(summary);
+
+    const childContainer = document.createElement('div');
+    childContainer.className = 'folder-children';
+    details.appendChild(childContainer);
+
+    renderTree(folder, childContainer, depth + 1);
+    container.appendChild(details);
+  });
+
+  node.files.forEach((file) => {
     const item = document.createElement('button');
     item.className = 'file-item';
     item.textContent = formatFileLabel(file.name);
-    item.addEventListener('click', () => openFile(file, item));
-    fileListEl.appendChild(item);
+    item.addEventListener('click', () => {
+      openFile(file, item);
+      closeSidebar();
+    });
+    container.appendChild(item);
   });
 }
 

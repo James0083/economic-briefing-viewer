@@ -39,9 +39,38 @@ body {
   background: var(--surface);
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .app-header h1 {
   font-size: 1.25rem;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.menu-toggle:hover { background: var(--bg); }
+
+#user-status {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .btn-primary {
@@ -95,6 +124,39 @@ body {
 
 .file-item:hover { background: var(--bg); }
 .file-item.active { background: var(--accent); color: var(--accent-contrast); }
+
+.folder-item {
+  margin: 2px 0;
+}
+.folder-item > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  user-select: none;
+}
+.folder-item > summary::-webkit-details-marker { display: none; }
+.folder-item > summary:hover { background: var(--bg); }
+.folder-item > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+.folder-item[open] > summary::before { content: '▾'; }
+.folder-children {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+  margin-top: 2px;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
 
 .content {
   padding: 24px 32px;
@@ -154,6 +216,34 @@ body {
 .app-footer a { color: var(--muted); }
 
 @media (max-width: 720px) {
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
   .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 240px; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 82%;
+    max-width: 320px;
+    max-height: none;
+    border-right: 1px solid var(--border);
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.25);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 50;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 40;
+  }
+  .sidebar-backdrop.show { display: block; }
+
+  .content { padding: 20px 16px; }
 }

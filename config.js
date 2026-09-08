@@ -6,5 +6,8 @@
 const CONFIG = {
   CLIENT_ID: '114985047347-eb5qo0fv94rlq3sqjahhiq6cjti53ami.apps.googleusercontent.com',
   FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // "경제시황분석" 폴더 ID
-  DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive.readonly',
+  // drive.readonly: 파일 조회용. userinfo.email: 로그인한 계정이 소유자 계정인지 판별하기 위해 이메일을 읽어옴.
+  OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
+  // 이 이메일로 로그인한 경우에만 하위 폴더 탐색이 표시됩니다.
+  OWNER_EMAIL: 'jaewon000830@gmail.com',
 };

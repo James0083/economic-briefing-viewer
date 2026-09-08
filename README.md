@@ -10,6 +10,9 @@ Google Drive의 "경제시황분석" 폴더에 있는 마크다운 브리핑 파
 - 로그인 후 브라우저가 Google Drive API를 직접 호출해 폴더 안의 `.md` 파일 목록을 가져옵니다.
 - 목록에서 파일을 클릭하면 원문을 가져와 마크다운으로 렌더링합니다.
 - 드라이브 폴더는 비공개로 유지해도 되며, 로그인한 계정에 접근 권한이 있을 때만 내용이 보입니다.
+- 모바일 화면에서는 목록이 좌측 슬라이드 메뉴(햄버거 버튼 ☰)로 표시됩니다.
+- 하위 폴더 탐색은 `config.js`의 `OWNER_EMAIL`로 지정한 계정으로 로그인했을 때만 표시됩니다.
+  다른 테스트 사용자 계정으로 로그인하면 최상위 폴더의 `.md` 파일만 보입니다.
 
 ## 배포 전 필수 설정: Google OAuth 클라이언트 ID 발급
 
@@ -21,6 +24,8 @@ Google Drive의 "경제시황분석" 폴더에 있는 마크다운 브리핑 파
 3. **API 및 서비스 > OAuth 동의 화면**을 구성합니다.
    - User Type: 외부(External)
    - 앱을 게시(Publish)하지 않고 "테스트" 상태로 두어도 됩니다. 이 경우 **테스트 사용자**에 본인 구글 계정을 등록해야 로그인할 수 있습니다.
+   - 범위(Scopes)에 `.../auth/drive.readonly` 외에 `.../auth/userinfo.email`도 추가해주세요
+     (로그인한 계정이 소유자 계정인지 판별해 하위 폴더 표시 여부를 결정하는 데 사용됩니다).
 4. **API 및 서비스 > 사용자 인증 정보 > 사용자 인증 정보 만들기 > OAuth 클라이언트 ID**
    - 애플리케이션 유형: **웹 애플리케이션**
    - **승인된 자바스크립트 원본**에 GitHub Pages 주소를 추가합니다.
@@ -32,7 +37,8 @@ Google Drive의 "경제시황분석" 폴더에 있는 마크다운 브리핑 파
 const CONFIG = {
   CLIENT_ID: '여기에_발급받은_클라이언트_ID',
   FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // 경제시황분석 폴더 ID (이미 설정됨)
-  DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive.readonly',
+  OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
+  OWNER_EMAIL: 'jaewon000830@gmail.com', // 이 계정으로 로그인할 때만 하위 폴더가 표시됨
 };
 ```
 
