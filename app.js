@@ -1,10 +1,5 @@
 let accessToken = null;
 let isOwner = false;
-let signedIn = false;
-
-const SIGNED_IN_FLAG = 'ebv-was-signed-in';
-const STATE_SILENT = 'silent';
-const STATE_CONSENT = 'consent';
 
 const signinBtn = document.getElementById('signin-btn');
 const userStatus = document.getElementById('user-status');
@@ -45,31 +40,31 @@ menuToggle.addEventListener('click', () => {
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
-function buildAuthUrl(prompt, state) {
+// 이 앱은 drive.readonly(민감 범위)를 요청하는데, 구글 앱 검증(verification)을
+// 받지 않으면 "Google에서 확인하지 않은 앱" 경고 화면이 테스트/프로덕션 상태와
+// 무관하게 항상 뜬다. 이 화면은 대화형(사용자 클릭)으로만 넘어갈 수 있고
+// prompt=none으로는 절대 건너뛸 수 없어서, 팝업/iframe/리다이렉트 무엇으로
+// 시도하든 "완전 자동 재로그인"은 애초에 불가능하다(검증을 받아야 사라짐).
+// 그래서 억지로 조용한 재인증을 시도했다가 매번 실패해서 화면만 깜빡이게
+// 하지 않고, 로그인 버튼 클릭 한 번으로만 동작하도록 단순하게 유지한다.
+function buildAuthUrl() {
   const params = new URLSearchParams({
     client_id: CONFIG.CLIENT_ID,
     redirect_uri: CONFIG.REDIRECT_URI,
     response_type: 'token',
     scope: CONFIG.OAUTH_SCOPES,
     include_granted_scopes: 'true',
-    state,
+    state: 'ebv',
   });
-  if (prompt) params.set('prompt', prompt);
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-// 팝업도 iframe도 아닌, 전체 페이지를 구글로 이동시켰다가 그대로 돌려받는
-// 방식입니다. 팝업 차단 정책에도, iframe 삽입 차단 정책에도 걸리지 않습니다.
-// prompt='none'으로 호출하면 구글은 화면을 하나도 그리지 않고(로그인
-// 세션과 기존 동의가 유효하면) 토큰을 붙여서 즉시 돌려보내거나, 그게
-// 불가능하면 에러를 붙여서 즉시 돌려보냅니다 — 둘 다 화면 깜빡임 정도로
-// 끝나고 사용자 조작이 필요 없습니다.
-function redirectToGoogle(prompt, state) {
-  window.location.href = buildAuthUrl(prompt, state);
+function redirectToGoogle() {
+  window.location.href = buildAuthUrl();
 }
 
-// 구글에서 돌아왔을 때 URL 프래그먼트(#access_token=...&state=... 또는
-// #error=...&state=...)를 읽습니다. 리다이렉트로 돌아온 게 아니면 null.
+// 구글에서 돌아왔을 때 URL 프래그먼트(#access_token=... 또는 #error=...)를
+// 읽습니다. 리다이렉트로 돌아온 게 아니면 null.
 function parseReturnedHash() {
   const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
   if (!hash) return null;
@@ -82,55 +77,32 @@ function clearHash() {
   history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
-async function initAuth() {
+function initAuth() {
   if (!CONFIG.CLIENT_ID || CONFIG.CLIENT_ID.startsWith('YOUR_GOOGLE_OAUTH_CLIENT_ID')) {
     showError('config.js에 Google OAuth CLIENT_ID를 먼저 설정해주세요. (README.md 참고)');
     signinBtn.disabled = true;
     return;
   }
 
-  // 이 클릭은 사용자 제스처 안에서 일어나는 일반적인 페이지 이동이라
-  // 아무 차단 정책에도 걸리지 않습니다. 최초 로그인이나, 완전히 세션이
-  // 끊긴 뒤 재로그인할 때 이 경로를 탑니다.
-  signinBtn.addEventListener('click', () => {
-    redirectToGoogle('consent', STATE_CONSENT);
-  });
+  signinBtn.addEventListener('click', redirectToGoogle);
 
   const returned = parseReturnedHash();
-  if (returned) {
-    clearHash(); // 액세스 토큰이 주소창에 남지 않도록 정리
-    const token = returned.get('access_token');
-    if (token) {
-      accessToken = token;
-      localStorage.setItem(SIGNED_IN_FLAG, '1');
-      signInSuccessUI();
-      return;
-    }
-    // 에러로 돌아온 경우
-    if (returned.get('state') === STATE_SILENT) {
-      // 조용한 자동 재로그인 시도가 실패한 것뿐 — 화면에는 아무 표시도
-      //하지 않고 로그인 버튼만 남겨둡니다 (세션이 끊겼거나 첫 방문 등).
-      localStorage.removeItem(SIGNED_IN_FLAG);
-      return;
-    }
-    showError('로그인에 실패했습니다: ' + (returned.get('error') || '알 수 없는 오류'));
+  if (!returned) return;
+
+  clearHash(); // 액세스 토큰이 주소창에 남지 않도록 정리
+  const token = returned.get('access_token');
+  if (token) {
+    accessToken = token;
+    signInSuccessUI();
     return;
   }
-
-  // 리다이렉트로 돌아온 게 아니라 새로 페이지를 연 경우: 이전에 로그인한
-  // 적이 있다면 조용히(화면 전환 없이) 자동 재로그인을 시도합니다.
-  if (localStorage.getItem(SIGNED_IN_FLAG) === '1') {
-    redirectToGoogle('none', STATE_SILENT);
-  }
+  showError('로그인에 실패했습니다: ' + (returned.get('error') || '알 수 없는 오류'));
 }
 
 function signInSuccessUI() {
   clearError();
   signinBtn.hidden = true;
-  if (!signedIn) {
-    signedIn = true;
-    afterSignIn();
-  }
+  afterSignIn();
 }
 
 async function afterSignIn() {
@@ -165,17 +137,10 @@ async function driveFetch(url, timeoutMs = 15000) {
   }
   if (res.status === 401) {
     accessToken = null;
-    signedIn = false;
-    if (localStorage.getItem(SIGNED_IN_FLAG) === '1') {
-      // 토큰이 만료된 것뿐일 수 있으니, 화면을 다시 그리지 않고 곧바로
-      // 조용한 재로그인을 시도합니다(성공하면 페이지가 새로 열리며 이어집니다).
-      redirectToGoogle('none', STATE_SILENT);
-    } else {
-      signinBtn.hidden = false;
-      userStatus.hidden = true;
-      menuToggle.hidden = true;
-      layout.hidden = true;
-    }
+    signinBtn.hidden = false;
+    userStatus.hidden = true;
+    menuToggle.hidden = true;
+    layout.hidden = true;
     throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
   }
   if (!res.ok) {
