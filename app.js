@@ -132,6 +132,12 @@ async function fetchFolderChildren(folderId) {
   return data.files || [];
 }
 
+async function fetchFolderMeta(folderId) {
+  const url = `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,name`;
+  const res = await driveFetch(url);
+  return res.json();
+}
+
 // 소유자 계정으로 로그인한 경우에만 하위 폴더까지 재귀적으로 조회합니다.
 async function loadFolderTree(folderId) {
   const children = await fetchFolderChildren(folderId);
@@ -152,10 +158,34 @@ async function loadFolderTree(folderId) {
   return { folders, files: mdFiles };
 }
 
+// OWNER_ONLY_FOLDER_IDS에 지정된 폴더는 FOLDER_ID 트리 안에 실제로 있는지와
+// 무관하게, 소유자 계정으로 로그인했을 때만 최상위에 별도로 추가됩니다.
+async function loadOwnerOnlyFolders(alreadyIncludedIds) {
+  const ids = Array.isArray(CONFIG.OWNER_ONLY_FOLDER_IDS) ? CONFIG.OWNER_ONLY_FOLDER_IDS : [];
+  const extraFolders = [];
+  for (const folderId of ids) {
+    if (alreadyIncludedIds.has(folderId)) continue;
+    try {
+      const meta = await fetchFolderMeta(folderId);
+      const subtree = await loadFolderTree(folderId);
+      extraFolders.push({ id: folderId, name: meta.name, ...subtree });
+    } catch (err) {
+      // 아직 이동 전이라 접근 권한이 없거나 폴더를 찾을 수 없으면 조용히 건너뜁니다.
+    }
+  }
+  return extraFolders;
+}
+
 async function loadFileTree() {
   fileListEl.innerHTML = '<p class="muted">불러오는 중...</p>';
   try {
     const tree = await loadFolderTree(CONFIG.FOLDER_ID);
+
+    if (isOwner) {
+      const alreadyIncludedIds = new Set(tree.folders.map((f) => f.id));
+      tree.folders.push(...(await loadOwnerOnlyFolders(alreadyIncludedIds)));
+    }
+
     fileListEl.innerHTML = '';
     renderTree(tree, fileListEl, 0);
     if (fileListEl.children.length === 0) {

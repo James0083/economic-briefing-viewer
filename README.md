@@ -39,8 +39,17 @@ const CONFIG = {
   FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // 경제시황분석 폴더 ID (이미 설정됨)
   OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
   OWNER_EMAIL: 'jaewon000830@gmail.com', // 이 계정으로 로그인할 때만 하위 폴더가 표시됨
+  OWNER_ONLY_FOLDER_IDS: ['1mWvYywhASMUfkY1OuKCxjE1xAjbpqVqf'], // OWNER_EMAIL에게만 추가로 보여줄 폴더
 };
 ```
+
+`OWNER_ONLY_FOLDER_IDS`에 넣은 폴더는 `FOLDER_ID` 트리 안에 실제로 들어있는지와 무관하게,
+`OWNER_EMAIL`로 로그인했을 때만 최상위에 별도 항목으로 추가됩니다. Drive에서 폴더를 다른
+위치로 옮겨도 폴더 ID 자체는 바뀌지 않으므로 계속 정상 동작합니다.
+
+⚠️ **중요**: 이 폴더는 다른 계정과 절대 공유하지 마세요. 앱의 이 로직은 화면에만 안 보이게
+하는 것일 뿐, 실제 접근 차단은 Google Drive의 공유 권한이 담당합니다 — Drive에서 공유하지
+않은 폴더는 다른 계정이 로그인해도 Drive API가 애초에 데이터를 반환하지 않습니다.
 
 `config.js`를 수정한 뒤 `main` 브랜치에 커밋/푸시하면 GitHub Actions 워크플로우가 자동으로
 GitHub Pages에 배포합니다.

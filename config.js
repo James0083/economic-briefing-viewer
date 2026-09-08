@@ -10,4 +10,9 @@ const CONFIG = {
   OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
   // 이 이메일로 로그인한 경우에만 하위 폴더 탐색이 표시됩니다.
   OWNER_EMAIL: 'jaewon000830@gmail.com',
+  // FOLDER_ID 트리 안에 있는지 여부와 상관없이, OWNER_EMAIL로 로그인했을 때만
+  // 추가로 보여줄 폴더 ID 목록. Drive에서 폴더를 다른 위치로 옮겨도 ID는
+  // 바뀌지 않으므로, 실제 위치와 무관하게 계속 동작합니다.
+  // (지금은 "유재원" 폴더 — 다른 계정에는 절대 공유하지 마세요.)
+  OWNER_ONLY_FOLDER_IDS: ['1mWvYywhASMUfkY1OuKCxjE1xAjbpqVqf'],
 };
