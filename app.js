@@ -45,17 +45,10 @@ menuToggle.addEventListener('click', () => {
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
-// redirect_uri는 이 페이지 자신입니다(별도 리다이렉트 파일 없음). 항상
-// 같은 값을 계산해야 구글 콘솔에 등록한 값과 정확히 일치하므로, 쿼리스트링
-// 없이 origin+pathname만 씁니다.
-function currentRedirectUri() {
-  return window.location.origin + window.location.pathname;
-}
-
 function buildAuthUrl(prompt, state) {
   const params = new URLSearchParams({
     client_id: CONFIG.CLIENT_ID,
-    redirect_uri: currentRedirectUri(),
+    redirect_uri: CONFIG.REDIRECT_URI,
     response_type: 'token',
     scope: CONFIG.OAUTH_SCOPES,
     include_granted_scopes: 'true',

@@ -5,6 +5,12 @@
 // 발급된 클라이언트 ID를 아래에 넣으면 됩니다. 자세한 절차는 README.md를 참고하세요.
 const CONFIG = {
   CLIENT_ID: '114985047347-eb5qo0fv94rlq3sqjahhiq6cjti53ami.apps.googleusercontent.com',
+  // 구글 로그인 후 되돌아올 주소를 고정값으로 둡니다. window.location에서
+  // 계산하면 접속 경로(끝 슬래시 유무, index.html 포함 여부 등)에 따라
+  // 값이 미묘하게 달라져서 Google Cloud Console에 등록한 값과 어긋나
+  // "redirect_uri_mismatch" 오류가 날 수 있습니다. 이 값과 콘솔의
+  // "승인된 리디렉션 URI"가 글자 하나까지 정확히 같아야 합니다.
+  REDIRECT_URI: 'https://james0083.github.io/economic-briefing-viewer/',
   FOLDER_ID: '1KIxaeD2vde9-KgsOUefKzqUVGhWyLfze', // "경제시황분석 - Claude" 폴더 ID
   // drive.readonly: 파일 조회용. userinfo.email: 로그인한 계정이 소유자 계정인지 판별하기 위해 이메일을 읽어옴.
   OAUTH_SCOPES: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email',
