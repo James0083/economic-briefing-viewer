@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>경제시황분석 브리핑</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>📊 경제시황분석 브리핑</h1>
+    <div id="auth-area">
+      <button id="signin-btn" class="btn-primary">Google로 로그인</button>
+      <span id="user-status" class="hidden">로그인됨</span>
+    </div>
+  </header>
+
+  <main class="layout" id="layout" hidden>
+    <aside class="sidebar">
+      <h2>브리핑 목록</h2>
+      <div id="file-list" class="file-list">
+        <p class="muted">불러오는 중...</p>
+      </div>
+    </aside>
+    <section class="content">
+      <div id="content-placeholder" class="muted">왼쪽 목록에서 브리핑을 선택하세요.</div>
+      <article id="content-view" class="markdown-body" hidden></article>
+    </section>
+  </main>
+
+  <p id="error-banner" class="error-banner" hidden></p>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="app.js"></script>
+</body>
+</html>
