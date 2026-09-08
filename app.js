@@ -12,6 +12,19 @@ const menuToggle = document.getElementById('menu-toggle');
 const sidebar = document.getElementById('sidebar');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
+// 브리핑 원문에 날짜/숫자 범위 표기로 물결표(~)가 자주 쓰이는데(예: "9/7~9/8",
+// "5~8가지"), GFM 취소선 문법은 물결표 한 개만으로도 짝을 지어 취소선으로
+// 인식해버려서 관련 없는 구간이 통째로 취소선 처리되는 문제가 있었다.
+// (예: "5~8가지 (9/7~9/8)" → "5<del>8가지 (9/7</del>9/8)") 이 앱에서는
+// 취소선 문법을 쓸 일이 없으므로 아예 비활성화한다.
+marked.use({
+  tokenizer: {
+    del() {
+      return undefined;
+    },
+  },
+});
+
 function showError(message) {
   errorBanner.textContent = message;
   errorBanner.hidden = false;
