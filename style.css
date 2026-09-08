@@ -22,6 +22,12 @@
 
 * { box-sizing: border-box; }
 
+/* 다른 규칙(예: .layout { display: grid }, .sidebar 등)이 지정한
+   display 값보다 hidden 속성이 항상 우선하도록 강제한다. 이게 없으면
+   로그인 전에도 main#layout이 그리드로 렌더링되어 사이드바가 화면 밖
+   드로어 상태로 남고, 그 box-shadow가 화면 왼쪽 가장자리에 번져 보인다. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
