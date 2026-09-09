@@ -53,22 +53,38 @@ menuToggle.addEventListener('click', () => {
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
-// 모바일 화면 왼쪽 가장자리에서 오른쪽으로 스와이프하면 사이드바가 열립니다.
-const EDGE_SWIPE_ZONE = 24; // 이 픽셀 범위 안(화면 왼쪽 끝)에서 시작해야 인식
-const SWIPE_OPEN_THRESHOLD = 60;
+// 본문 영역 어디에서든 가로로 스와이프하면 사이드바를 열고 닫습니다.
+// 화면 가장자리에서 시작하는 스와이프는 안드로이드(특히 갤럭시)의 시스템
+// "뒤로 가기" 제스처가 먼저 가로채므로, 가장자리 부근에서 시작한 터치는
+// 아예 무시하고 본문 안쪽에서 시작한 것만 인식합니다.
+const SYSTEM_GESTURE_ZONE = 32; // 좌우 가장자리 이 범위는 시스템 제스처 영역으로 간주
+const SWIPE_THRESHOLD = 60;
 
 let swipeStartX = null;
 let swipeStartY = null;
 let swipeTracking = false;
 
+// 가로 스크롤이 가능한 요소(넓은 표, 코드 블록 등) 위에서 시작한 스와이프는
+// 그 요소를 스크롤하려는 의도이므로 사이드바 제스처로 쓰지 않습니다.
+function startedInsideScrollableArea(target) {
+  let el = target;
+  while (el && el !== document.body) {
+    if (el.scrollWidth > el.clientWidth + 1) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 document.addEventListener(
   'touchstart',
   (e) => {
-    if (window.innerWidth > 720) return; // 데스크톱 레이아웃에서는 사이드바가 항상 보이므로 불필요
+    swipeTracking = false;
+    if (window.innerWidth > 720) return; // 데스크톱 레이아웃에서는 사이드바가 항상 보임
     if (layout.hidden) return; // 로그인 전에는 열 목록이 없음
-    if (sidebar.classList.contains('open')) return;
     const touch = e.touches[0];
-    if (touch.clientX > EDGE_SWIPE_ZONE) return;
+    if (touch.clientX < SYSTEM_GESTURE_ZONE) return;
+    if (touch.clientX > window.innerWidth - SYSTEM_GESTURE_ZONE) return;
+    if (startedInsideScrollableArea(e.target)) return;
     swipeStartX = touch.clientX;
     swipeStartY = touch.clientY;
     swipeTracking = true;
@@ -87,10 +103,14 @@ document.addEventListener(
       swipeTracking = false; // 세로 스크롤 의도로 판단되면 취소
       return;
     }
-    if (deltaX > SWIPE_OPEN_THRESHOLD) {
+    if (Math.abs(deltaX) < SWIPE_THRESHOLD) return;
+
+    if (sidebar.classList.contains('open')) {
+      if (deltaX < 0) closeSidebar(); // 열린 상태에서 왼쪽으로 밀면 닫기
+    } else {
       openSidebar();
-      swipeTracking = false;
     }
+    swipeTracking = false;
   },
   { passive: true }
 );
@@ -136,6 +156,46 @@ function clearHash() {
   history.replaceState(null, '', window.location.pathname + window.location.search);
 }
 
+// 구글이 발급한 액세스 토큰은 보통 1시간 정도 유효합니다. 이걸 저장해두면
+// 그 시간 안에는 새로고침하거나 앱을 다시 열어도 구글에 다녀오지 않고 바로
+// 이어서 쓸 수 있습니다. (검증받지 않은 앱이라 자동 재발급은 불가능하므로,
+// 이미 받아둔 토큰을 유효기간까지 최대한 활용하는 방식입니다.)
+const TOKEN_STORAGE_KEY = 'ebv-token';
+
+function saveToken(token, expiresInSeconds) {
+  // 만료 직전에 요청이 실패하지 않도록 1분 정도 여유를 둡니다.
+  const expiresAt = Date.now() + (Number(expiresInSeconds) || 3600) * 1000 - 60000;
+  try {
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, expiresAt }));
+  } catch (err) {
+    // 저장 공간을 못 쓰는 환경(시크릿 모드 등)에서는 이번 세션에만 로그인이 유지됩니다.
+  }
+}
+
+function loadSavedToken() {
+  try {
+    const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    if (!saved || !saved.token || !saved.expiresAt) return null;
+    if (Date.now() >= saved.expiresAt) {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      return null;
+    }
+    return saved.token;
+  } catch (err) {
+    return null;
+  }
+}
+
+function clearSavedToken() {
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch (err) {
+    // 무시
+  }
+}
+
 function initAuth() {
   if (!CONFIG.CLIENT_ID || CONFIG.CLIENT_ID.startsWith('YOUR_GOOGLE_OAUTH_CLIENT_ID')) {
     showError('config.js에 Google OAuth CLIENT_ID를 먼저 설정해주세요. (README.md 참고)');
@@ -146,16 +206,25 @@ function initAuth() {
   signinBtn.addEventListener('click', redirectToGoogle);
 
   const returned = parseReturnedHash();
-  if (!returned) return;
-
-  clearHash(); // 액세스 토큰이 주소창에 남지 않도록 정리
-  const token = returned.get('access_token');
-  if (token) {
-    accessToken = token;
-    signInSuccessUI();
+  if (returned) {
+    clearHash(); // 액세스 토큰이 주소창에 남지 않도록 정리
+    const token = returned.get('access_token');
+    if (token) {
+      accessToken = token;
+      saveToken(token, returned.get('expires_in'));
+      signInSuccessUI();
+      return;
+    }
+    showError('로그인에 실패했습니다: ' + (returned.get('error') || '알 수 없는 오류'));
     return;
   }
-  showError('로그인에 실패했습니다: ' + (returned.get('error') || '알 수 없는 오류'));
+
+  // 리다이렉트로 돌아온 게 아니라면, 아직 유효한 토큰이 저장돼 있는지 확인합니다.
+  const savedToken = loadSavedToken();
+  if (savedToken) {
+    accessToken = savedToken;
+    signInSuccessUI();
+  }
 }
 
 function signInSuccessUI() {
@@ -196,6 +265,7 @@ async function driveFetch(url, timeoutMs = 15000) {
   }
   if (res.status === 401) {
     accessToken = null;
+    clearSavedToken();
     signinBtn.hidden = false;
     userStatus.hidden = true;
     menuToggle.hidden = true;
