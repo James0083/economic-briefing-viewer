@@ -53,6 +53,52 @@ menuToggle.addEventListener('click', () => {
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
+// 모바일 화면 왼쪽 가장자리에서 오른쪽으로 스와이프하면 사이드바가 열립니다.
+const EDGE_SWIPE_ZONE = 24; // 이 픽셀 범위 안(화면 왼쪽 끝)에서 시작해야 인식
+const SWIPE_OPEN_THRESHOLD = 60;
+
+let swipeStartX = null;
+let swipeStartY = null;
+let swipeTracking = false;
+
+document.addEventListener(
+  'touchstart',
+  (e) => {
+    if (window.innerWidth > 720) return; // 데스크톱 레이아웃에서는 사이드바가 항상 보이므로 불필요
+    if (layout.hidden) return; // 로그인 전에는 열 목록이 없음
+    if (sidebar.classList.contains('open')) return;
+    const touch = e.touches[0];
+    if (touch.clientX > EDGE_SWIPE_ZONE) return;
+    swipeStartX = touch.clientX;
+    swipeStartY = touch.clientY;
+    swipeTracking = true;
+  },
+  { passive: true }
+);
+
+document.addEventListener(
+  'touchmove',
+  (e) => {
+    if (!swipeTracking) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - swipeStartX;
+    const deltaY = touch.clientY - swipeStartY;
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      swipeTracking = false; // 세로 스크롤 의도로 판단되면 취소
+      return;
+    }
+    if (deltaX > SWIPE_OPEN_THRESHOLD) {
+      openSidebar();
+      swipeTracking = false;
+    }
+  },
+  { passive: true }
+);
+
+document.addEventListener('touchend', () => {
+  swipeTracking = false;
+});
+
 // 이 앱은 drive.readonly(민감 범위)를 요청하는데, 구글 앱 검증(verification)을
 // 받지 않으면 "Google에서 확인하지 않은 앱" 경고 화면이 테스트/프로덕션 상태와
 // 무관하게 항상 뜬다. 이 화면은 대화형(사용자 클릭)으로만 넘어갈 수 있고
