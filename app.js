@@ -107,8 +107,8 @@ document.addEventListener(
 
     if (sidebar.classList.contains('open')) {
       if (deltaX < 0) closeSidebar(); // 열린 상태에서 왼쪽으로 밀면 닫기
-    } else {
-      openSidebar();
+    } else if (deltaX > 0) {
+      openSidebar(); // 닫힌 상태에서는 오른쪽으로 밀 때만 열기
     }
     swipeTracking = false;
   },
