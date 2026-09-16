@@ -2,7 +2,11 @@ let accessToken = null;
 let isOwner = false;
 
 const signinBtn = document.getElementById('signin-btn');
-const userStatus = document.getElementById('user-status');
+const account = document.getElementById('account');
+const accountBtn = document.getElementById('account-btn');
+const accountMenu = document.getElementById('account-menu');
+const accountEmail = document.getElementById('account-email');
+const logoutBtn = document.getElementById('logout-btn');
 const layout = document.getElementById('layout');
 const fileListEl = document.getElementById('file-list');
 const placeholder = document.getElementById('content-placeholder');
@@ -52,6 +56,56 @@ menuToggle.addEventListener('click', () => {
   }
 });
 sidebarBackdrop.addEventListener('click', closeSidebar);
+
+// 헤더 우측의 계정 버튼(이메일 첫 글자)을 누르면 로그인한 계정과 로그아웃
+// 버튼이 있는 작은 메뉴가 열립니다.
+function setAccountMenuOpen(open) {
+  accountMenu.hidden = !open;
+  accountBtn.setAttribute('aria-expanded', String(open));
+}
+
+accountBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setAccountMenuOpen(accountMenu.hidden);
+});
+
+document.addEventListener('click', (e) => {
+  if (accountMenu.hidden) return;
+  if (account.contains(e.target)) return;
+  setAccountMenuOpen(false);
+});
+
+function showAccount(email) {
+  accountEmail.textContent = email || '로그인됨';
+  accountBtn.textContent = (email || '?').trim().charAt(0).toUpperCase();
+  account.hidden = false;
+}
+
+function hideAccount() {
+  setAccountMenuOpen(false);
+  account.hidden = true;
+}
+
+// 로그아웃은 저장된 토큰을 지우고 로그인 전 화면으로 되돌립니다. 구글 계정
+// 자체에서 로그아웃되거나 앱 권한이 취소되는 것은 아니므로, 다시 로그인할 때
+// 비밀번호를 새로 입력할 필요는 없습니다.
+function signOut() {
+  accessToken = null;
+  isOwner = false;
+  clearSavedToken();
+  hideAccount();
+  closeSidebar();
+  clearError();
+  signinBtn.hidden = false;
+  menuToggle.hidden = true;
+  layout.hidden = true;
+  fileListEl.innerHTML = '';
+  contentView.innerHTML = '';
+  contentView.hidden = true;
+  placeholder.hidden = false;
+}
+
+logoutBtn.addEventListener('click', signOut);
 
 // 본문 영역 어디에서든 가로로 스와이프하면 사이드바를 열고 닫습니다.
 // 화면 가장자리에서 시작하는 스와이프는 안드로이드(특히 갤럭시)의 시스템
@@ -236,11 +290,25 @@ function signInSuccessUI() {
 async function afterSignIn() {
   const email = await fetchUserEmail();
   isOwner = email === CONFIG.OWNER_EMAIL;
-  userStatus.hidden = false;
-  userStatus.textContent = email || '로그인됨';
+  showAccount(email);
   menuToggle.hidden = false;
   layout.hidden = false;
   await loadFileTree();
+}
+
+// 구글 API 오류 응답에서 사람이 읽을 수 있는 사유를 뽑아냅니다.
+// 예: " — rateLimitExceeded: User Rate Limit Exceeded"
+async function describeApiError(res) {
+  try {
+    const body = await res.json();
+    const err = body && body.error;
+    if (!err) return '';
+    const reason = err.errors && err.errors[0] && err.errors[0].reason;
+    const detail = [reason, err.message].filter(Boolean).join(': ');
+    return detail ? ` — ${detail}` : '';
+  } catch (e) {
+    return ''; // 본문이 JSON이 아니면 상태 코드만 보여줍니다.
+  }
 }
 
 // 네트워크가 불안정할 때 fetch가 응답 없이 무한정 멈춰있으면 화면도 그대로
@@ -266,14 +334,16 @@ async function driveFetch(url, timeoutMs = 15000) {
   if (res.status === 401) {
     accessToken = null;
     clearSavedToken();
+    hideAccount();
     signinBtn.hidden = false;
-    userStatus.hidden = true;
     menuToggle.hidden = true;
     layout.hidden = true;
     throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
   }
   if (!res.ok) {
-    throw new Error(`요청 실패 (${res.status})`);
+    // 구글이 응답 본문에 담아주는 실제 사유(rateLimitExceeded, insufficientPermissions 등)를
+    // 함께 보여줘야 원인을 파악할 수 있습니다.
+    throw new Error(`요청 실패 (${res.status})${await describeApiError(res)}`);
   }
   return res;
 }

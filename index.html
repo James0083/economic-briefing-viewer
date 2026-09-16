@@ -23,7 +23,13 @@
     </div>
     <div id="auth-area">
       <button id="signin-btn" class="btn-primary">Google로 로그인</button>
-      <span id="user-status" class="hidden"></span>
+      <div id="account" class="account" hidden>
+        <button id="account-btn" class="account-btn" aria-label="계정" aria-expanded="false"></button>
+        <div id="account-menu" class="account-menu" hidden>
+          <p class="account-email" id="account-email"></p>
+          <button id="logout-btn" class="account-logout">로그아웃</button>
+        </div>
+      </div>
     </div>
   </header>
 
