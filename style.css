@@ -129,6 +129,13 @@ body {
   background: var(--bg);
 }
 
+.account-version {
+  margin: 10px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+}
+
 .btn-primary {
   background: var(--accent);
   color: var(--accent-contrast);
@@ -262,6 +269,30 @@ body {
   border-radius: 6px;
   font-size: 0.9rem;
   max-width: 90vw;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-banner > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.error-copy {
+  flex: none;
+  min-width: 58px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  background: transparent;
+  color: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.error-copy:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .app-footer {

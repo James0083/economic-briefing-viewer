@@ -1,3 +1,7 @@
+// 배포 버전. PWA는 이전에 캐시된 코드가 남아있을 수 있어서, 문제가 생겼을 때
+// 지금 실행 중인 코드가 최신인지 계정 메뉴에서 바로 확인할 수 있게 표시합니다.
+const APP_VERSION = '2026-09-16.1';
+
 let accessToken = null;
 let isOwner = false;
 
@@ -6,6 +10,7 @@ const account = document.getElementById('account');
 const accountBtn = document.getElementById('account-btn');
 const accountMenu = document.getElementById('account-menu');
 const accountEmail = document.getElementById('account-email');
+const accountVersion = document.getElementById('account-version');
 const logoutBtn = document.getElementById('logout-btn');
 const layout = document.getElementById('layout');
 const fileListEl = document.getElementById('file-list');
@@ -29,12 +34,58 @@ marked.use({
   },
 });
 
+// 오류가 났을 때 화면에 보이는 문구를 그대로 복사할 수 있게 해둡니다. 모바일에서는
+// 긴 오류 메시지를 손으로 옮겨 적기 어려워서 원인 파악이 늦어집니다.
+let lastErrorText = '';
+
+async function copyLastError(btn) {
+  const payload = `${lastErrorText}\n(build ${APP_VERSION})`;
+  try {
+    await navigator.clipboard.writeText(payload);
+  } catch (err) {
+    // 클립보드 API를 못 쓰는 환경(비보안 컨텍스트, 일부 인앱 브라우저)에서는
+    // 임시 textarea를 이용한 예전 방식으로 복사합니다.
+    const ta = document.createElement('textarea');
+    ta.value = payload;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch (e) {
+      return; // 복사 자체가 불가능하면 조용히 포기합니다.
+    } finally {
+      document.body.removeChild(ta);
+    }
+  }
+  btn.textContent = '복사됨';
+  setTimeout(() => {
+    btn.textContent = '복사';
+  }, 1500);
+}
+
 function showError(message) {
-  errorBanner.textContent = message;
+  lastErrorText = message;
+  errorBanner.textContent = '';
+
+  const text = document.createElement('span');
+  text.textContent = message;
+  errorBanner.appendChild(text);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'error-copy';
+  copyBtn.textContent = '복사';
+  copyBtn.addEventListener('click', () => copyLastError(copyBtn));
+  errorBanner.appendChild(copyBtn);
+
   errorBanner.hidden = false;
 }
 
 function clearError() {
+  lastErrorText = '';
   errorBanner.hidden = true;
 }
 
@@ -77,6 +128,7 @@ document.addEventListener('click', (e) => {
 
 function showAccount(email) {
   accountEmail.textContent = email || '로그인됨';
+  accountVersion.textContent = `버전 ${APP_VERSION}`;
   accountBtn.textContent = (email || '?').trim().charAt(0).toUpperCase();
   account.hidden = false;
 }
@@ -89,16 +141,22 @@ function hideAccount() {
 // 로그아웃은 저장된 토큰을 지우고 로그인 전 화면으로 되돌립니다. 구글 계정
 // 자체에서 로그아웃되거나 앱 권한이 취소되는 것은 아니므로, 다시 로그인할 때
 // 비밀번호를 새로 입력할 필요는 없습니다.
-function signOut() {
+// 저장된 토큰을 버리고 로그인 전 화면으로 되돌립니다. 사용자가 직접 로그아웃할
+// 때뿐 아니라, 토큰이 더 이상 통하지 않는다고 판정됐을 때도 씁니다.
+function resetToSignedOut() {
   accessToken = null;
   isOwner = false;
   clearSavedToken();
   hideAccount();
-  closeSidebar();
-  clearError();
   signinBtn.hidden = false;
   menuToggle.hidden = true;
   layout.hidden = true;
+}
+
+function signOut() {
+  resetToSignedOut();
+  closeSidebar();
+  clearError();
   fileListEl.innerHTML = '';
   contentView.innerHTML = '';
   contentView.hidden = true;
@@ -289,6 +347,12 @@ function signInSuccessUI() {
 
 async function afterSignIn() {
   const email = await fetchUserEmail();
+  // 계정 조회 단계에서 토큰이 무효로 판정되면 이미 로그인 화면으로 돌아간
+  // 상태이므로, 이어서 파일 목록을 부르지 않습니다.
+  if (!accessToken) {
+    if (lastUserinfoError) showError(lastUserinfoError);
+    return;
+  }
   isOwner = email === CONFIG.OWNER_EMAIL;
   showAccount(email);
   menuToggle.hidden = false;
@@ -296,20 +360,38 @@ async function afterSignIn() {
   await loadFileTree();
 }
 
-// 구글 API 오류 응답에서 사람이 읽을 수 있는 사유를 뽑아냅니다.
-// 예: " — rateLimitExceeded: User Rate Limit Exceeded"
-async function describeApiError(res) {
+// 구글 API 오류 응답에서 사유(reason)와 메시지를 뽑아냅니다.
+// 예: { reason: 'rateLimitExceeded', message: 'User Rate Limit Exceeded.' }
+async function readApiError(res) {
   try {
     const body = await res.json();
-    const err = body && body.error;
-    if (!err) return '';
-    const reason = err.errors && err.errors[0] && err.errors[0].reason;
-    const detail = [reason, err.message].filter(Boolean).join(': ');
-    return detail ? ` — ${detail}` : '';
+    const err = (body && body.error) || {};
+    const reason = (err.errors && err.errors[0] && err.errors[0].reason) || err.status || '';
+    return { reason, message: err.message || '' };
   } catch (e) {
-    return ''; // 본문이 JSON이 아니면 상태 코드만 보여줍니다.
+    return { reason: '', message: '' }; // 본문이 JSON이 아니면 상태 코드만 보여줍니다.
   }
 }
+
+function formatApiError(status, info) {
+  const detail = [info.reason, info.message].filter(Boolean).join(': ');
+  return detail ? `요청 실패 (${status}) — ${detail}` : `요청 실패 (${status})`;
+}
+
+// 403 중에는 "이 토큰으로는 앞으로도 안 된다"는 뜻인 사유들이 있습니다. 이때
+// 오류만 띄우면 저장된 토큰이 만료될 때까지(최대 1시간) 계속 같은 오류가 나서
+// 사용자가 빠져나올 방법이 없습니다. 그래서 토큰을 버리고 로그인 화면으로
+// 되돌려 바로 다시 로그인할 수 있게 합니다.
+const TOKEN_INVALID_REASONS = [
+  'authError',
+  'unauthorized',
+  'forbidden',
+  'insufficientPermissions',
+  'ACCESS_TOKEN_SCOPE_INSUFFICIENT',
+  'PERMISSION_DENIED',
+  'UNAUTHENTICATED',
+  'dailyLimitExceededUnreg',
+];
 
 // 네트워크가 불안정할 때 fetch가 응답 없이 무한정 멈춰있으면 화면도 그대로
 // 멈춰버립니다. 일정 시간 안에 응답이 없으면 타임아웃 에러로 실패 처리해서
@@ -332,28 +414,34 @@ async function driveFetch(url, timeoutMs = 15000) {
     clearTimeout(timer);
   }
   if (res.status === 401) {
-    accessToken = null;
-    clearSavedToken();
-    hideAccount();
-    signinBtn.hidden = false;
-    menuToggle.hidden = true;
-    layout.hidden = true;
+    resetToSignedOut();
     throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
   }
   if (!res.ok) {
     // 구글이 응답 본문에 담아주는 실제 사유(rateLimitExceeded, insufficientPermissions 등)를
     // 함께 보여줘야 원인을 파악할 수 있습니다.
-    throw new Error(`요청 실패 (${res.status})${await describeApiError(res)}`);
+    const info = await readApiError(res);
+    if (res.status === 403 && TOKEN_INVALID_REASONS.includes(info.reason)) {
+      resetToSignedOut();
+      throw new Error(`${formatApiError(res.status, info)} / 로그인 정보가 더 이상 유효하지 않습니다. 다시 로그인해주세요.`);
+    }
+    throw new Error(formatApiError(res.status, info));
   }
   return res;
 }
 
+// 이메일을 못 가져와도(소유자 판별만 못 할 뿐) 브리핑은 볼 수 있으므로 흐름을
+// 끊지 않되, 무슨 이유로 실패했는지는 기록해둡니다.
+let lastUserinfoError = '';
+
 async function fetchUserEmail() {
+  lastUserinfoError = '';
   try {
     const res = await driveFetch('https://www.googleapis.com/oauth2/v3/userinfo');
     const data = await res.json();
     return data.email || null;
   } catch (err) {
+    lastUserinfoError = `계정 정보를 불러오지 못했습니다: ${err.message}`;
     return null;
   }
 }

@@ -165,6 +165,26 @@ Pages의 기본 동작입니다(조직 단위 GitHub Enterprise Cloud에는 Page
 로그인 + Drive 공유 권한이 담당하므로, 저장소를 공개로 유지해도 보안 위험은 낮습니다.
 그냥 소스를 아무나 못 보게 하고 싶다는 이유라면 GitHub Pro + 비공개 전환으로 충분합니다.
 
+## 문제 해결: 403 오류
+
+오류 배너에는 구글이 알려준 **실제 사유(reason)** 가 함께 표시되며, 옆의 `복사` 버튼을
+누르면 사유와 실행 중인 빌드 버전이 함께 클립보드에 복사됩니다. 사유별 대처는 다음과 같습니다.
+
+| 사유(reason) | 뜻 | 대처 |
+| --- | --- | --- |
+| `rateLimitExceeded` / `userRateLimitExceeded` | 짧은 시간에 요청이 너무 많음 | 잠시 후 다시 시도 |
+| `dailyLimitExceeded` | 프로젝트 일일 할당량 초과 | 다음 날까지 대기하거나 Cloud Console에서 할당량 확인 |
+| `accessNotConfigured` | Cloud 프로젝트에서 Drive API가 꺼져 있음 | Cloud Console → API 및 서비스에서 Google Drive API 사용 설정 |
+| `insufficientFilePermissions` | 그 파일/폴더에 대한 Drive 공유 권한이 없음 | Drive에서 해당 계정을 뷰어로 추가 |
+| `insufficientPermissions` / `ACCESS_TOKEN_SCOPE_INSUFFICIENT` | 토큰에 필요한 권한 범위가 없음 | 자동으로 로그아웃되므로 다시 로그인 |
+
+토큰 자체가 더 이상 쓸 수 없는 사유(마지막 줄)일 때는 앱이 저장된 토큰을 지우고 로그인
+화면으로 되돌립니다. 그렇게 하지 않으면 토큰이 만료될 때까지(최대 1시간) 같은 오류가
+반복돼 빠져나갈 방법이 없기 때문입니다.
+
+설치한 PWA에서 오류가 났다면 **앱을 완전히 종료했다가 다시 열어** 최신 코드를 받은 뒤
+확인하세요. 계정 메뉴 아래쪽에 표시되는 `버전`으로 지금 실행 중인 빌드를 확인할 수 있습니다.
+
 ## 알려진 제약
 
 - OAuth 동의 화면을 "테스트" 상태로 둔 경우, 등록된 테스트 사용자만 로그인할 수 있고
